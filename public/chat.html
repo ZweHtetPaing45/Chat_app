@@ -89,7 +89,7 @@
         // Open chat with a user
         async function openChat(username){
             chattingWith = username;
-            document.getElementById("chatWith").innerHTML =` Chat with: <span style="color: black;">${username}</span>`;
+            document.getElementById("chatWith").innerHTML =`<span style="color: black;">${username}</span>`;
             const res = await fetch(`/api/chat/${myUsername}/${username}`);
             const messages = await res.json();
             const ul = document.getElementById("messages");
