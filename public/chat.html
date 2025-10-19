@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <link rel="icon" type="image/x-icon" href="assets/img/favicon.ico" />
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css?family=Saira+Extra+Condensed:500,700" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Muli:400,400i,800,800i" rel="stylesheet">
+    <style>
+        #onlineUsers img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        #messages li {
+            margin-bottom: 5px;
+            list-style: none;
+            padding: 5px;
+            border-radius: 5px;
+            background: #eee;
+        }
+    </style>
+</head>
+<body>
+    <!-- ✅ Online Page -->
+    <div id="onlinePage" class="container my-5 pt-4">
+        <h3 class="text-center text-primary">Online Users</h3>
+        <div id="onlineUsers"></div>
+    </div>
+
+    <!-- ✅ Chat Page -->
+    <div id="chatPage" class="container pt-4" style="display:none;">
+        <div class="fixed-top">
+            <div class="d-flex justify-content-between align-items-center gap-5 bg-white">
+              <button class="btn" id="backBtn"><i  class="bi bi-arrow-left-square-fill" style="font-size: 42px; color: rgb(91, 91, 97);"></i></button>
+              <h4 id="chatWith" class="text-primary p-2">Chat</h4>
+            <button class="btn" id="deleteChat"><i class="bi bi-trash-fill"  style="font-size: 42px; color: rgb(91, 91, 97);"></i></button>
+            </div>
+        </div>
+        <ul id="messages" style="margin: 60px 0px 100px 0px;"></ul>
+        <div class="d-flex fixed-bottom bg-white p-2">
+            <input id="msg" class="form-control shadow-none me-2" placeholder="Type message...">
+            <button class="btn btn-light" id="send"><i class="bi bi-send-fill text-primary fs-4"></i></button>
+        </div>
+    </div>
+
+    <!-- Socket.io -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const token = localStorage.getItem("token");
+        if(!token) window.location.href = "/login.html";
+
+        let myUsername = null;
+        let chattingWith = null;
+
+        // Decode token to get username
+        (function(){
+            const payload = JSON.parse(atob(token.split(".")[1]));
+            myUsername = payload.username;
+        })();
+
+        // Login socket
+        socket.emit("login", token);
+
+        // Display online users
+        socket.on("onlineUsers", users => {
+            const list = document.getElementById("onlineUsers");
+            list.innerHTML = "";
+            for(const [username,user] of Object.entries(users)){
+                if(username === myUsername) continue;
+                const li = document.createElement("div");
+                li.innerHTML = `<div class="d-flex justify-content-start align-items-center">
+                                    <img src="/uploads/${user.image}" />
+                                    <span style="color: black; font-weight: 500;">${username}</span>
+                                </div><hr>`;
+                li.onclick = () => openChat(username);
+                list.appendChild(li);
+            }
+        });
+
+        // Open chat with a user
+        async function openChat(username){
+            chattingWith = username;
+            document.getElementById("chatWith").innerHTML =` Chat with: <span style="color: black;">${username}</span>`;
+            const res = await fetch(`/api/chat/${myUsername}/${username}`);
+            const messages = await res.json();
+            const ul = document.getElementById("messages");
+            ul.innerHTML = "";
+
+            messages.forEach(m => {
+                const li = document.createElement("li");
+                li.innerHTML =` <div class="d-flex justify-content-between">
+                                    <p>${m.text}</p>
+                                    <span>${m.from}</span>
+                                </div>`;
+                ul.appendChild(li);
+            });
+            // Join socket room
+            socket.emit("joinRoom", {from: myUsername, to: username});
+            // Switch pages
+            document.getElementById("onlinePage").style.display = "none";
+            document.getElementById("chatPage").style.display = "block";
+        }
+
+        // Send message
+        document.getElementById("send").onclick = () => {
+            const text = document.getElementById("msg").value.trim();
+            if(text && chattingWith){
+                socket.emit("chatMessage",{from: myUsername,to: chattingWith,text});
+                document.getElementById("msg").value="";
+            }
+        };
+
+        // Receive message
+        socket.on("chatMessage", m => {
+            if(!chattingWith) return;
+            if((m.from===chattingWith && m.to===myUsername) || (m.from===myUsername && m.to===chattingWith)){
+                const li = document.createElement("li");
+                li.innerHTML = `<div class="d-flex justify-content-between">
+                                    <p>${m.text}</p>
+                                    <span>${m.from}</span>
+                                </div>`;
+                document.getElementById("messages").appendChild(li);
+            }
+        });
+
+        // Back button
+        document.getElementById("backBtn").onclick = () => {
+            document.getElementById("chatPage").style.display = "none";
+            document.getElementById("onlinePage").style.display = "block";
+            chattingWith = null;
+        };
+
+        // Delete chat
+        document.getElementById("deleteChat").onclick = async () => {
+            if (!chattingWith) return alert("Select a user first");
+            if (confirm(`Delete all chat with ${chattingWith}?`)) {
+                const res = await fetch(`/api/chat/${myUsername}/${chattingWith}`, { method: "DELETE" });
+                const json = await res.json();
+                if(json.success){
+                    document.getElementById("messages").innerHTML = "";
+                    alert("Conversation deleted for both users!");
+                } else {
+                    alert("Failed to delete chat");
+                }
+            }
+        };
+    </script>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
